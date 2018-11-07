@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# coding=utf-8
 
 import time
 import socket
@@ -7,12 +8,18 @@ import MFRC522
 import signal
 import hashlib
 import sys
+import requests
 
 continue_reading = True
 
-USER = "Lock1"
-PASSWORD = "Password"
+LOCKOPEN = False  # Status des Schlosses False = zu True = offen
 
+
+# Userdaten und Passwort aus Zeitgründen unten
+
+
+server_ip = "192.168.178.54"
+LOCK = 1
 
 # Capture SIGINT for cleanup when the script is aborted
 def end_read(signal, frame):
@@ -62,55 +69,23 @@ while continue_reading:
 
         # Check if authenticated
         if status == MIFAREReader.MI_OK:
-            print "works"
-            s = socket.socket()
-            host = "127.0.0.1"
-            port = 3030
-            s.connect((host, port))
-            s.send("USER %s" % USER)
-            ans = s.recv(1024)
-            if ans.startswith("+OK"):
-                s.send("PASS %s" % (hashlib.md5(PASSWORD).hexdigest()))
-                ans = s.recv(1024)
-                if ans.startswith("+OK"):
-                    print("Authentification successful!")
-                    s.send("OPEN %s:%s:%s:%s" % (uid[0], uid[1], uid[2], uid[3]))
-                    ans = s.recv(1024)
-                    if ans.startswith("+OK"):
-                        print("Allowed to open.")
-                        s.send("STATE")
-                        ans = s.recv(1024)
-                        if ans.startswith("+OK"):
-                            lockstate = ans[4:]
-                            if lockstate == "OPEN":
-                                print("Lock is currently open.")
-                                s.send("SET_STATE CLOSE")
-                                ans = s.recv(1024)
-                                if ans.startswith("+OK"):
-                                    print("Lock successfully closed")
-                                else:
-                                    print("Lock couldn't be closed.")
-                            elif lockstate == "CLOSE":
-                                print("Lock is currently closed.")
-                                s.send("SET_STATE OPEN")
-                                ans = s.recv(1024)
-                                if ans.startswith("+OK"):
-                                    print("Lock successfully opened")
-                                else:
-                                    print("Lock couldn't be opened.")
-                        else:
-                            print("ERR State")
-                        s.send("QUIT")
-                    else:
-                        print(ans[5:])
+            PASSWORD = "%s:%s:%s:%s" % (uid[0], uid[1], uid[2], uid[3])
+            LINK = "http://%s:8080/keyless/user/openDoor?id=%s&password=&%s" % (server_ip, LOCK, PASSWORD)
+
+            r = requests.get(LINK)
+            if "true" in r.text:
+                print("Authentifikation erfolgreich!")
+                if LOCKOPEN:
+                    LOCKOPEN = False
+                    print("Das Schloss ist jetzt zu!")
                 else:
-                    print("ERR Password")
+                    LOCKOPEN = True
+                    print("Das Schloss ist jetzt offen!")
             else:
-                print("ERR User")
+                print("Fehler bei der Authentifikation!")
             # print "runns"
             # s.send("Card read UID: %s,%s,%s,%s \n" % (uid[0], uid[1], uid[2], uid[3]))
-            s.close()
-            MIFAREReader.MFRC522_StopCrypto1()
-            time.sleep(3)
-        else:
-            print "Authentication error"
+        MIFAREReader.MFRC522_StopCrypto1()
+        time.sleep(3)
+else:
+    print "Authentication error"
